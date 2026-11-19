@@ -1,0 +1,237 @@
+================================================================================
+                    IRIS FEATURE EXTRACTION COMMAND REFERENCE
+================================================================================
+
+Workspace Directory:
+  C:\Users\anish\Documents\Iris
+
+Required Environment Paths:
+  - Java JDK:
+      C:\Program Files\Java\jdk-25.0.4.1\bin
+  - Neurotechnology SDK Java Jars:
+      C:\Program Files\Neurotechnology\Neurotec_Biometric_2025_2_SDK\Bin\Java\*
+  - Neurotechnology Native Binaries (64-bit DLLs):
+      C:\Program Files\Neurotechnology\Neurotec_Biometric_2025_2_SDK\Bin\Win64_x64
+
+
+--------------------------------------------------------------------------------
+STEP 0: PREREQUISITES & COMPILATION
+--------------------------------------------------------------------------------
+1. Ensure the Neurotechnology Activation / License service is running.
+2. Compile the Java Feature Extractor (run from project root):
+
+[PowerShell]
+& "C:\Program Files\Java\jdk-25.0.4.1\bin\javac.exe" -cp ".;C:\Program Files\Neurotechnology\Neurotec_Biometric_2025_2_SDK\Bin\Java\*" src\IrisFeatureExtractor.java
+
+[CMD / Command Prompt]
+"C:\Program Files\Java\jdk-25.0.4.1\bin\javac.exe" -cp ".;C:\Program Files\Neurotechnology\Neurotec_Biometric_2025_2_SDK\Bin\Java\*" src\IrisFeatureExtractor.java
+
+
+--------------------------------------------------------------------------------
+STEP 1: EXTRACT FEATURES FOR A SINGLE IRIS IMAGE
+--------------------------------------------------------------------------------
+Syntax:
+  java -cp "<classpath>" IrisFeatureExtractor <image_path> <output_json> <subject_id> <sample_id> [dataset_name] [subdataset_name]
+
+Arguments:
+  1. image_path       : Path to input image (.bmp, .png, .jpg, etc.)
+  2. output_json      : Destination JSON file
+  3. subject_id       : Identifier of the subject (e.g. "001")
+  4. sample_id        : Identifier of the sample/image (e.g. "01")
+  5. dataset_name     : (Optional) Label for dataset (e.g. "IIT_Iris", default: "IrisDataset")
+  6. subdataset_name  : (Optional) Side or partition (e.g. "Left", "Right", default: "Default")
+
+Example Command:
+[PowerShell]
+& "C:\Program Files\Java\jdk-25.0.4.1\bin\java.exe" -cp "src;C:\Program Files\Neurotechnology\Neurotec_Biometric_2025_2_SDK\Bin\Java\*" IrisFeatureExtractor "images\02.bmp" "templates\test_output.json" "001" "02" "IIT_Iris" "Left"
+
+[CMD / Command Prompt]
+"C:\Program Files\Java\jdk-25.0.4.1\bin\java.exe" -cp "src;C:\Program Files\Neurotechnology\Neurotec_Biometric_2025_2_SDK\Bin\Java\*" IrisFeatureExtractor "images\02.bmp" "templates\test_output.json" "001" "02" "IIT_Iris" "Left"
+
+Verify Generated Output:
+  Get-Content "templates\test_output.json" | Select-Object -First 25
+
+
+--------------------------------------------------------------------------------
+STEP 2: BATCH FEATURE EXTRACTION FOR A FULL DATABASE
+--------------------------------------------------------------------------------
+
+Supported Dataset Folder Conventions:
+  A) Subject & Eye side subfolders (e.g. IIT Iris):
+       <database_root>\<SubjectSide>\<sample>.bmp
+       Example: "IIT iris seperated\001left\01.bmp"
+                "IIT iris seperated\001right\06.bmp"
+
+  B) Subject folders:
+       <database_root>\Subject_<N>\<sample>.bmp
+       Example: "Database\Subject_001\1.bmp"
+
+Output Files Generated Per Sample:
+  - <output_root>\<SubjectSide>\<sample>.json (contains metadata, contours, feature_vector_binary bitstring, and feature_vector_base64)
+  - <output_root>\<SubjectSide>\<sample>.bin  (companion raw 5,184-byte binary file for direct binary loading)
+  Example:
+    "Iris_Features\001left\01.json"
+    "Iris_Features\001left\01.bin"
+
+
+--- METHOD A: Using the Python Batch Script (Recommended) ---
+
+1. Preview / Dry-Run (Discovers images without executing extraction):
+   python extract_iris_features.py "IIT iris seperated" Iris_Features --dry-run
+
+2. Run Full Batch Extraction:
+   python extract_iris_features.py "IIT iris seperated" Iris_Features --dataset IIT_Iris --skip-existing
+
+Flags:
+  --dataset NAME     : Sets dataset metadata field (default: IrisDataset)
+  --skip-existing    : Skips images that already have a generated JSON
+  --dry-run          : Scans dataset and prints mappings without extracting
+  --legacy-workers   : Runs multiple separate JVM processes in parallel
+  --jobs N           : Number of parallel workers when using --legacy-workers
+
+
+--- METHOD B: Direct In-Memory Java Batch Mode (Ultra-Fast) ---
+
+You can also run the Java batch engine directly without Python:
+
+[PowerShell]
+& "C:\Program Files\Java\jdk-25.0.4.1\bin\java.exe" -cp "src;C:\Program Files\Neurotechnology\Neurotec_Biometric_2025_2_SDK\Bin\Java\*" IrisFeatureExtractor --batch "IIT iris seperated" "Iris_Features" "IIT_Iris" --skip-existing
+
+[CMD / Command Prompt]
+"C:\Program Files\Java\jdk-25.0.4.1\bin\java.exe" -cp "src;C:\Program Files\Neurotechnology\Neurotec_Biometric_2025_2_SDK\Bin\Java\*" IrisFeatureExtractor --batch "IIT iris seperated" "Iris_Features" "IIT_Iris" --skip-existing
+
+
+--------------------------------------------------------------------------------
+STEP 3: MONITORING & VERIFYING BATCH PROGRESS
+--------------------------------------------------------------------------------
+
+Check how many JSON files have been created so far:
+  (Get-ChildItem -Path "Iris_Features" -Recurse -Filter "*.json").Count
+
+Inspect the latest extracted JSON file:
+  Get-ChildItem -Path "Iris_Features" -Recurse -Filter "*.json" | Sort-Object LastWriteTime -Descending | Select-Object -First 1 | Get-Content | Select-Object -First 30
+
+Check total images in input dataset vs total extracted JSONs:
+  Write-Host "Input Images: $((Get-ChildItem -Path 'IIT iris seperated' -Recurse -Filter '*.bmp').Count)"
+  Write-Host "Output JSONs: $((Get-ChildItem -Path 'IIT iris iriscodes' -Recurse -Filter '*.json').Count)"
+
+
+--------------------------------------------------------------------------------
+STEP 4: COMPUTE FAR AND FRR USING VERIEYE MATCHING MODULES
+--------------------------------------------------------------------------------
+
+1. Compile the Evaluator (run from project root):
+
+[PowerShell]
+& "C:\Program Files\Java\jdk-25.0.4.1\bin\javac.exe" -cp ".;C:\Program Files\Neurotechnology\Neurotec_Biometric_2025_2_SDK\Bin\Java\*" src\IrisFarFrrEvaluator.java
+
+[CMD / Command Prompt]
+"C:\Program Files\Java\jdk-25.0.4.1\bin\javac.exe" -cp ".;C:\Program Files\Neurotechnology\Neurotec_Biometric_2025_2_SDK\Bin\Java\*" src\IrisFarFrrEvaluator.java
+
+2. Run the Evaluator on "IIT iris iriscodes":
+
+[PowerShell]
+& "C:\Program Files\Java\jdk-25.0.4.1\bin\java.exe" -cp "src;C:\Program Files\Neurotechnology\Neurotec_Biometric_2025_2_SDK\Bin\Java\*" IrisFarFrrEvaluator "IIT iris iriscodes" "evaluation_results"
+
+[CMD / Command Prompt]
+"C:\Program Files\Java\jdk-25.0.4.1\bin\java.exe" -cp "src;C:\Program Files\Neurotechnology\Neurotec_Biometric_2025_2_SDK\Bin\Java\*" IrisFarFrrEvaluator "IIT iris iriscodes" "evaluation_results"
+
+3. Generate the Interactive Visual Dashboard:
+   python generate_dashboard.py
+
+Evaluation Artifacts Generated:
+  - evaluation_results\far_frr_report.txt    (Text summary with EER & operating points)
+  - evaluation_results\roc_curve.csv         (Full ROC & DET curve data)
+  - evaluation_results\genuine_scores.csv    (4,476 genuine pair comparison scores)
+  - evaluation_results\impostor_scores.csv   (100,128 impostor pair comparison scores)
+  - evaluation_results\far_frr_dashboard.html(Interactive browser-based chart dashboard)
+
+
+--------------------------------------------------------------------------------
+STEP 5: EXTRACT FACE FEATURE VECTORS (CelebA / VeriLook SDK)
+--------------------------------------------------------------------------------
+
+Source code: src\FaceFeatureExtractor.java
+Python runner: extract_face_features.py
+
+1. Compile the Face Feature Extractor:
+
+[PowerShell]
+& "C:\Program Files\Java\jdk-25.0.4.1\bin\javac.exe" -cp ".;C:\Program Files\Neurotechnology\Neurotec_Biometric_2025_2_SDK\Bin\Java\*" src\FaceFeatureExtractor.java
+
+[CMD / Command Prompt]
+"C:\Program Files\Java\jdk-25.0.4.1\bin\javac.exe" -cp ".;C:\Program Files\Neurotechnology\Neurotec_Biometric_2025_2_SDK\Bin\Java\*" src\FaceFeatureExtractor.java
+
+2. Extract a Single Face Image:
+
+[PowerShell]
+& "C:\Program Files\Java\jdk-25.0.4.1\bin\java.exe" -cp "src;C:\Program Files\Neurotechnology\Neurotec_Biometric_2025_2_SDK\Bin\Java\*" FaceFeatureExtractor "img_align_celeba\000001.jpg" "celeba_features\000001.json" "000001" "000001" "CelebA"
+
+[CMD / Command Prompt]
+"C:\Program Files\Java\jdk-25.0.4.1\bin\java.exe" -cp "src;C:\Program Files\Neurotechnology\Neurotec_Biometric_2025_2_SDK\Bin\Java\*" FaceFeatureExtractor "img_align_celeba\000001.jpg" "celeba_features\000001.json" "000001" "000001" "CelebA"
+
+3. Batch Extraction for CelebA Dataset (img_align_celeba):
+
+Option A: Python Runner
+  # Extract first 1,000 images using 12 threads:
+  python extract_face_features.py img_align_celeba celeba_features --dataset CelebA --max 1000 --threads 12 --skip-existing
+
+  # Extract entire dataset:
+  python extract_face_features.py img_align_celeba celeba_features --dataset CelebA --threads 12 --skip-existing
+
+Option B: Direct In-Memory Java Batch Mode (Ultra-Fast)
+[PowerShell]
+& "C:\Program Files\Java\jdk-25.0.4.1\bin\java.exe" -cp "src;C:\Program Files\Neurotechnology\Neurotec_Biometric_2025_2_SDK\Bin\Java\*" FaceFeatureExtractor --batch "img_align_celeba" "celeba_features" "CelebA" --max 1000 --threads 12 --skip-existing
+
+[CMD / Command Prompt]
+"C:\Program Files\Java\jdk-25.0.4.1\bin\java.exe" -cp "src;C:\Program Files\Neurotechnology\Neurotec_Biometric_2025_2_SDK\Bin\Java\*" FaceFeatureExtractor --batch "img_align_celeba" "celeba_features" "CelebA" --max 1000 --threads 12 --skip-existing
+
+Files Generated Per Image:
+  - <output_root>\<image_stem>.json  (contains bounding_box, yaw/pitch/roll, 68 facial landmarks, quality, feature_vector_binary bitstring, and feature_vector_base64)
+  - <output_root>\<image_stem>.bin   (companion raw 302-byte serialized binary template)
+================================================================================
+
+================================================================================
+STEP 6 - FACE FAR/FRR EVALUATION (FaceFarFrrEvaluator)
+================================================================================
+Source:        src\FaceFarFrrEvaluator.java
+Output folder: face_evaluation_results\
+
+NOTE: jna.library.path is set inside the Java code — do NOT add -Djna.library.path
+      as a JVM flag; the backtick line-continuation trick breaks the command.
+
+1. Build classpath variable (run once per PowerShell session):
+
+[PowerShell]
+$JDIR = "C:\Program Files\Neurotechnology\Neurotec_Biometric_2025_2_SDK\Bin\Java"
+$CP   = (Get-ChildItem "$JDIR\*.jar" | Where-Object { $_.Name -notlike "*javadoc*" } | ForEach-Object { $_.FullName }) -join ";"
+
+2. Compile:
+
+[PowerShell]
+javac -cp "$CP" src\FaceFarFrrEvaluator.java -d out\
+
+[CMD / Command Prompt]
+"C:\Program Files\Java\jdk-25.0.4.1\bin\javac.exe" -cp "C:\Program Files\Neurotechnology\Neurotec_Biometric_2025_2_SDK\Bin\Java\*" src\FaceFarFrrEvaluator.java -d out\
+
+3. Run (evaluate lfw_features -> face_evaluation_results):
+
+[PowerShell]
+java -cp "out;$CP" FaceFarFrrEvaluator lfw_features face_evaluation_results
+
+[CMD / Command Prompt]
+"C:\Program Files\Java\jdk-25.0.4.1\bin\java.exe" -cp "out;C:\Program Files\Neurotechnology\Neurotec_Biometric_2025_2_SDK\Bin\Java\*" FaceFarFrrEvaluator lfw_features face_evaluation_results
+
+4. Custom paths:
+   java -cp "out;$CP" FaceFarFrrEvaluator <features_dir> <output_report_dir>
+
+Files Generated:
+  - face_evaluation_results\face_far_frr_report.txt   (full text report with EER, operating points)
+  - face_evaluation_results\face_roc_curve.csv        (Threshold, FAR, FRR, GAR for every score value)
+  - face_evaluation_results\face_genuine_scores.csv   (per-pair genuine match scores)
+  - face_evaluation_results\face_impostor_scores.csv  (per-pair impostor match scores)
+
+Pairing logic:
+  - Genuine : all combinations of .bin files within the same person subfolder
+  - Impostor: first .bin of every pair of different person subfolders
+================================================================================
