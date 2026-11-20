@@ -38,10 +38,14 @@ Usage
 
 Outputs
 -------
+    * Binary iriscodes (2048 bits each) written to files mirroring the
+      input dataset folder structure under `<dataset_root>_iriscodes/`
+      (or `--codes-dir`).
     * Printed summary statistics (mean/std of genuine & impostor HD,
       count of segmentation failures, suggested decision threshold).
     * A histogram plot saved to iris_hd_distributions.png (and shown if a
       display is available).
+    * Optional single-file export via --dump-codes <file>.
 """
 
 from __future__ import annotations
@@ -300,6 +304,17 @@ def main():
                     help="maximum angular columns to shift for rotation tolerance (default: 16)")
     ap.add_argument("--dump-used", type=Path, default=None,
                     help="write the relative paths of all successfully encoded images to this file")
+    ap.add_argument("--codes-dir", type=Path, default=None,
+                    help="directory to write binary iriscodes mirroring input folder structure "
+                         "(default: <dataset_root>_iriscodes)")
+    ap.add_argument("--no-save-codes", action="store_true", default=False,
+                    help="do not write binary iriscodes to disk")
+    ap.add_argument("--save-mask", action="store_true", default=False,
+                    help="also save noise mask bit strings (<name>_mask.txt) alongside the code files")
+    ap.add_argument("--dump-codes", type=Path, default=None,
+                    help="optionally write all relative paths and binary iriscodes to this single text file")
+    ap.add_argument("--print-codes", action="store_true", default=False,
+                    help="print binary iriscodes to stdout")
     ap.add_argument("--restrict-to", type=Path, nargs="+", default=None,
                     help="only evaluate images listed in ALL of these files (intersection)")
     args = ap.parse_args()
@@ -376,6 +391,39 @@ def main():
                 for p in ps:
                     fh.write(p.relative_to(args.dataset_root).as_posix() + "\n")
         print(f"Wrote list of used images to {args.dump_used}")
+
+    if not args.no_save_codes:
+        out_dir = args.codes_dir if args.codes_dir is not None else (args.dataset_root.parent / f"{args.dataset_root.name}_iriscodes")
+        out_dir.mkdir(parents=True, exist_ok=True)
+        count = 0
+        for cls in sorted(used_paths.keys()):
+            for p, code in zip(used_paths[cls], encoded[cls]):
+                rel = p.relative_to(args.dataset_root)
+                dest = (out_dir / rel).with_suffix(".txt")
+                dest.parent.mkdir(parents=True, exist_ok=True)
+                dest.write_text(code.bit_string(), encoding="utf-8")
+                if args.save_mask:
+                    dest_mask = dest.parent / f"{dest.stem}_mask.txt"
+                    dest_mask.write_text(code.mask_string(), encoding="utf-8")
+                count += 1
+        print(f"Wrote {count} binary iriscodes to '{out_dir}' (mirroring input folder structure).")
+
+    if args.print_codes:
+        total_imgs = sum(len(v) for v in used_paths.values())
+        print(f"\n--- Binary IrisCodes ({total_imgs} images, 2048 bits each) ---")
+        for cls in sorted(used_paths.keys()):
+            for p, code in zip(used_paths[cls], encoded[cls]):
+                rel = p.relative_to(args.dataset_root).as_posix()
+                print(f"{rel}: {code.bit_string()}")
+        print("--- End of Binary IrisCodes ---\n")
+
+    if args.dump_codes is not None:
+        with open(args.dump_codes, "w", encoding="utf-8") as fh:
+            for cls in sorted(used_paths.keys()):
+                for p, code in zip(used_paths[cls], encoded[cls]):
+                    rel = p.relative_to(args.dataset_root).as_posix()
+                    fh.write(f"{rel}: {code.bit_string()}\n")
+        print(f"Wrote binary iriscodes to {args.dump_codes}")
 
     gen_raw, gen_records = genuine_distances(encoded, used_paths, max_shift=args.max_shift)
     imp_raw, imp_records = impostor_distances(encoded, used_paths, args.max_impostor_pairs,

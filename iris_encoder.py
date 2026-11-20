@@ -70,6 +70,14 @@ class IrisCode:
     def packed_mask(self) -> bytes:
         return np.packbits(self.mask).tobytes()
 
+    def bit_string(self) -> str:
+        """Return the 2048 bits as a binary string of '0's and '1's."""
+        return (self.bits + ord('0')).tobytes().decode('ascii')
+
+    def mask_string(self) -> str:
+        """Return the 2048 mask bits as a binary string of '0's and '1's."""
+        return (self.mask + ord('0')).tobytes().decode('ascii')
+
 
 class SegmentationError(RuntimeError):
     pass
